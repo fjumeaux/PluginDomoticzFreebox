@@ -519,21 +519,13 @@ class FbxApp(FbxCnx):
         return state
 
     def wifi_state(self):
-        """
-        Is WLAN state UP or DOWN
-
-        Returns:
-            bool: True if "UP" else False
-        """
-        enabled = None
         wifi = self.call('wifi/config/')
-        if wifi['enabled']:
-            Domoticz.Debug('Wifi interface is UP')
-            enabled = True
-        else:
-            Domoticz.Debug('Wifi interface is DOWN')
-            enabled = False
-        return enabled
+        enabled = wifi.get('enabled')
+        if enabled is None:
+            Domoticz.Error("Wifi state unavailable (missing 'enabled')")
+            return None  # ou False si tu préfères
+        Domoticz.Debug('Wifi interface is UP' if enabled else 'Wifi interface is DOWN')
+        return bool(enabled)
 
     def wifi_enable(self, switch_on):
         """
@@ -716,6 +708,7 @@ class FbxApp(FbxCnx):
         def shutdown(self, uid, remote_code):
             ## To Do http://hd{uid}.freebox.fr/pub/remote_control?code={remote_code}&key=power
             return self.remote(uid, remote_code, "power")
+
 
 
 
