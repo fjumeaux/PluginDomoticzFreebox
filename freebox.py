@@ -90,7 +90,7 @@ class FbxCnx:
         Returns:
             (dict of str: str): Freebox API Response as dictionary
         """
-        url = self.host + '/api/v' + str(self.api_ver) + '/' + path
+        url = self._api_base() + path.lstrip('/')
         Domoticz.Debug('API REQUEST - URL: ' + url)
         Domoticz.Debug('API REQUEST - Method: ' + method)
         Domoticz.Debug('API REQUEST - Headers: ' + f"{headers}")
@@ -193,6 +193,31 @@ class FbxCnx:
         Domoticz.Debug('Disconnect' + result)
         return result
 
+    def _api_base(self):
+        """
+        Construit la base d'URL API à partir de /api_version.
+        Exemple attendu:
+          https://<api_domain>:<https_port><api_base_url>v<api_ver>/
+        """
+        # 1) Parse le host initial (celui fourni au plugin)
+        parsed = urlparse(self.host if '://' in self.host else ('https://' + self.host))
+        scheme = parsed.scheme or 'https'
+
+        # 2) Détermine le hostname de base
+        # - si api_domain fourni : on l'utilise (cert + routage Freebox OS)
+        # - sinon : on garde le hostname du host initial
+        hostname = self.api_domain if self.api_domain else (parsed.hostname or parsed.netloc or self.host)
+
+        # 3) Détermine le port
+        port = self.https_port if self.https_port else (parsed.port or 443)
+
+        # 4) Normalise api_base_url
+        api_base = self.api_base_url or '/api/'
+        if not api_base.startswith('/'):
+            api_base = '/' + api_base
+        api_base = api_base.rstrip('/') + '/'
+
+        return f"{scheme}://{hostname}:{port}{api_base}v{self.api_ver}/"
 
 class FbxApp(FbxCnx):
     """
@@ -691,4 +716,5 @@ class FbxApp(FbxCnx):
         def shutdown(self, uid, remote_code):
             ## To Do http://hd{uid}.freebox.fr/pub/remote_control?code={remote_code}&key=power
             return self.remote(uid, remote_code, "power")
+
 
