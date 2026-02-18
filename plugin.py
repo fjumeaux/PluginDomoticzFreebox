@@ -1,10 +1,10 @@
 # Freebox Python Plugin
 #
-# Author: supermat & ilionel : https://github.com/ilionel/PluginDomoticzFreebox/
+# Author: supermat & ilionel refork by fj: https://github.com/ilionel/PluginDomoticzFreebox/
 # Credit: https://matdomotique.wordpress.com/2018/03/25/plugin-freebox-pour-domoticz/
 #
 """
-<plugin key="Freebox" name="Freebox (via API)" author="supermat &amp; ilionel" version="2.1.4" wikilink="https://www.domoticz.com/wiki/Plugins" externallink="https://matdomotique.wordpress.com/2018/03/25/plugin-freebox-pour-domoticz">
+<plugin key="Freebox" name="Freebox (via API)" author="supermat &amp; ilionel refork by fj" version="2.1.4" wikilink="https://www.domoticz.com/wiki/Plugins" externallink="https://matdomotique.wordpress.com/2018/03/25/plugin-freebox-pour-domoticz">
     <description>
         <br/>
         <h2>Initialisation</h2><br/>
@@ -812,4 +812,5 @@ def DumpConfigToLog():
         Domoticz.Debug("Device sValue:   '" + Devices[x].sValue + "'")
         Domoticz.Debug("Device LastLevel: " + str(Devices[x].LastLevel))
         Domoticz.Debug("Options:         '" + str(Devices[x].Options) + "'")
+
 
