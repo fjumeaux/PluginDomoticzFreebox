@@ -1,7 +1,7 @@
 # Thanks to https://www.manatlan.com/blog/freeboxv6_api_v3_avec_python
 # and https://github.com/supermat/PluginDomoticzFreebox
 # Code under GPLv3
-# AUTHOR : supermat & ilionel
+# AUTHOR : supermat & ilionel refork by fj
 # CONTRIBUTOR : https://github.com/ilionel/PluginDomoticzFreebox/graphs/contributors
 # Please not that supermat don't maintain this software anymore
 
@@ -20,12 +20,13 @@ import time
 import urllib.request
 from urllib.request import urlopen, Request
 from socket import timeout
+from urllib.parse import urlparse
 import Domoticz
 
 # Globals CONSTANT
-HOST = 'https://mafreebox.freebox.fr'   # FQDN of freebox
+HOST = 'https://mafreebox.freebox.fr'   # host initial pour joindre api_version
 API_VER = '8'                           # API version
-TV_API_VER = '8'                        # TV Player API version
+TV_API_VER = '15'                        # TV Player API version
 REGISTER_TMOUT = 30                     # Timout in sec (for Obtain an app_token)
 API_TMOUT = 4                           # Timout in sec (for API response)
 CA_FILE = 'freebox_certificates.pem'
@@ -39,6 +40,11 @@ class FbxCnx:
     def __init__(self, host=HOST, api=API_VER):
         self.host = host
         self.api_ver = int(float(api))
+        self.requested_api_ver = int(float(api))
+        # Infos dynamiques récupérées via /api_version
+        self.api_base_url = '/api/'
+        self.https_port = None
+        self.api_domain = None
         self.info = None
         self.secure = ssl.create_default_context()
         cert_path = os.path.join(os.path.dirname(__file__), CA_FILE)
@@ -48,6 +54,15 @@ class FbxCnx:
             response = urlopen(request, timeout=API_TMOUT,
                                context=self.secure).read()
             self.info = json.loads(response.decode())
+            # Ex: api_version=15.0, https_port=57701, api_domain=xxxx.fbxos.fr, api_base_url=/api/
+            self.api_base_url = self.info.get('api_base_url', '/api/')
+            self.https_port = int(self.info.get('https_port', 443))
+            self.api_domain = self.info.get('api_domain', None)
+
+            supported = int(float(self.info.get('api_version', self.api_ver)))
+            # On utilise la version demandée si supportée, sinon on descend au max supporté
+            self.api_ver = min(self.requested_api_ver, supported)
+
             Domoticz.Debug(f"Supported API version: {self.info['api_version']}")
             Domoticz.Debug(f"Freebox model: {self.info['box_model']}")
         except (urllib.error.HTTPError, urllib.error.URLError) as error:
@@ -57,9 +72,11 @@ class FbxCnx:
         if self.info is None:
             Domoticz.Error(
                 'Fatal error: Unable to initialize Freebox connection!')
-        elif int(float(self.info['api_version'])) < self.api_ver:
-            Domoticz.Error(f"You need to upgrade Freebox's firmware to use at last API version \
-                           {self.api_ver} (current API version: {self.info['api_version']}).")
+        elif int(float(self.info['api_version'])) < self.requested_api_ver:
+            Domoticz.Error(
+                f"You need to upgrade Freebox's firmware to use at least API version "
+                f"{self.requested_api_ver} (current API version: {self.info['api_version']})."
+            )
 
     def _request(self, path, method='GET', headers=None, data=None):
         """ Send a request to Freebox API
@@ -674,3 +691,4 @@ class FbxApp(FbxCnx):
         def shutdown(self, uid, remote_code):
             ## To Do http://hd{uid}.freebox.fr/pub/remote_control?code={remote_code}&key=power
             return self.remote(uid, remote_code, "power")
+
