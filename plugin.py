@@ -451,7 +451,11 @@ class FreeboxPlugin:
 
     def _create_devices_wifi(self, f):
         # Create ON/OFF WIFI switch
-        wifi_state = 1 if f.wifi_state() else 0
+        st = f.wifi_state()
+        if st is None:
+            Domoticz.Error("Wifi state unavailable, skip device creation/update")
+            return
+        wifi_state = 1 if st else 0
         unit_id = self.return_unit_id(
             self.Device.COMMAND, "WIFI")
         if unit_id not in Devices:
@@ -566,7 +570,11 @@ class FreeboxPlugin:
 
     def _refresh_devices_wifi(self, f):
         # Update "Wifi" Domoticz switch state
-        wifi_state = 1 if f.wifi_state() else 0
+        st = f.wifi_state()
+        if st is None:
+            Domoticz.Error("Wifi state unavailable, skip device creation/update")
+            return
+        wifi_state = 1 if st else 0
         Domoticz.Debug("Le WIFI est " + LINK_STATE[wifi_state])
         self.update_device(self.Device.COMMAND, "WIFI", wifi_state, str(wifi_state))
 
@@ -812,5 +820,6 @@ def DumpConfigToLog():
         Domoticz.Debug("Device sValue:   '" + Devices[x].sValue + "'")
         Domoticz.Debug("Device LastLevel: " + str(Devices[x].LastLevel))
         Domoticz.Debug("Options:         '" + str(Devices[x].Options) + "'")
+
 
 
