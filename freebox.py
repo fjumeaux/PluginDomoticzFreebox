@@ -190,7 +190,7 @@ class FbxCnx:
             'login/logout/',
             'POST',
             {'Content-Type': 'application/json', 'X-Fbx-App-Auth': session_token})
-        Domoticz.Debug('Disconnect' + result)
+        Domoticz.Debug(f"Disconnect: {result}")
         return result
 
     def _api_base(self):
@@ -228,14 +228,14 @@ class FbxApp(FbxCnx):
     """
     tv_player = None
 
-    def __init__(self, app_id, app_token, host=HOST, session_token=None):
-        FbxCnx.__init__(self, host)
+    def __init__(self, app_id, app_token, host=HOST, session_token=None, enable_players=True):
+        super().__init__(host)
         self.app_id, self.app_token = app_id, app_token
         self.session_token = self._mksession(
             app_id, app_token) if session_token is None else session_token
         self.system = self.create_system()
         self.players = None  # Server may be connected to a Freebox TV Player
-        if enables_players:
+        if enable_players:
             self.create_players()
 
     def __del__(self):
@@ -708,6 +708,7 @@ class FbxApp(FbxCnx):
         def shutdown(self, uid, remote_code):
             ## To Do http://hd{uid}.freebox.fr/pub/remote_control?code={remote_code}&key=power
             return self.remote(uid, remote_code, "power")
+
 
 
 
