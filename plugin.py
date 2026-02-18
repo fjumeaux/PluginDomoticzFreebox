@@ -733,7 +733,7 @@ class FreeboxPlugin:
             return
 
         try:
-            f = freebox.FbxApp("idPluginDomoticz", self.token, host=self.freebox_url)
+            f = freebox.FbxApp("idPluginDomoticz", self.token, host=self.freebox_url, enable_players=False)
             self._refresh_devices_storages(f)
             self._refresh_devices_rates(f)
             self._refresh_devices_sensors(f)
@@ -812,3 +812,4 @@ def DumpConfigToLog():
         Domoticz.Debug("Device sValue:   '" + Devices[x].sValue + "'")
         Domoticz.Debug("Device LastLevel: " + str(Devices[x].LastLevel))
         Domoticz.Debug("Options:         '" + str(Devices[x].Options) + "'")
+
