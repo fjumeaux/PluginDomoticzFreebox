@@ -637,7 +637,7 @@ class FreeboxPlugin:
                 self._create_devices_presence(f)
                 self._create_devices_wifi(f)
                 self._create_devices_wan(f)
-                self._create_devices_players(f)
+                # self._create_devices_players(f)
                 self._create_devices_precord(f)
             DumpConfigToLog()
         except Exception as e:
@@ -741,7 +741,7 @@ class FreeboxPlugin:
             self._refresh_devices_presence(f)
             self._refresh_devices_wifi(f)
             self._refresh_devices_wan(f)
-            self._refresh_devices_players(f)
+            # self._refresh_devices_players(f)
             self._refresh_devices_precord(f)
         except Exception as e:
             Domoticz.Error(f"onHeartbeat error: {e}")
