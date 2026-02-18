@@ -25,7 +25,7 @@ import Domoticz
 
 # Globals CONSTANT
 HOST = 'https://mafreebox.freebox.fr'   # host initial pour joindre api_version
-API_VER = '8'                           # API version
+API_VER = '15'                           # API version
 TV_API_VER = '15'                        # TV Player API version
 REGISTER_TMOUT = 30                     # Timout in sec (for Obtain an app_token)
 API_TMOUT = 4                           # Timout in sec (for API response)
@@ -235,7 +235,7 @@ class FbxApp(FbxCnx):
             app_id, app_token) if session_token is None else session_token
         self.system = self.create_system()
         self.players = None  # Server may be connected to a Freebox TV Player
-        if self.tv_player is None:
+        if enables_players:
             self.create_players()
 
     def __del__(self):
@@ -716,5 +716,6 @@ class FbxApp(FbxCnx):
         def shutdown(self, uid, remote_code):
             ## To Do http://hd{uid}.freebox.fr/pub/remote_control?code={remote_code}&key=power
             return self.remote(uid, remote_code, "power")
+
 
 
