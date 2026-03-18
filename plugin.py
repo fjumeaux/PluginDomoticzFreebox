@@ -288,7 +288,7 @@ class FreeboxPlugin:
                 (Devices[unit_id].sValue != s_value) or (
                     Devices[unit_id].BatteryLevel != battery_level)
                 )
-            )):
+            ):
             self._update_device(unit_id, device, name, 'update', n_value, s_value, battery_level)
 
         elif device.value != self.Device.PRESENCE.value \
