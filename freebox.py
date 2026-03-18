@@ -9,7 +9,6 @@
 freebox.py is used by plugin.py
 """
 
-
 import hashlib
 import hmac
 import json
@@ -24,11 +23,11 @@ from urllib.parse import urlparse
 import Domoticz
 
 # Globals CONSTANT
-HOST = 'https://mafreebox.freebox.fr'   # host initial pour joindre api_version
-API_VER = '15'                           # API version
-TV_API_VER = '15'                        # TV Player API version
-REGISTER_TMOUT = 30                     # Timout in sec (for Obtain an app_token)
-API_TMOUT = 4                           # Timout in sec (for API response)
+HOST = 'https://mafreebox.freebox.fr'
+API_VER = '15'
+TV_API_VER = '15'
+REGISTER_TMOUT = 30
+API_TMOUT = 4
 CA_FILE = 'freebox_certificates.pem'
 
 
@@ -41,37 +40,39 @@ class FbxCnx:
         self.host = host
         self.api_ver = int(float(api))
         self.requested_api_ver = int(float(api))
-        # Infos dynamiques récupérées via /api_version
         self.api_base_url = '/api/'
         self.https_port = None
         self.api_domain = None
         self.info = None
         self.secure = ssl.create_default_context()
+
         cert_path = os.path.join(os.path.dirname(__file__), CA_FILE)
         request = Request(host + '/api_version')
+
         try:
             self.secure.load_verify_locations(cafile=cert_path)
-            response = urlopen(request, timeout=API_TMOUT,
-                               context=self.secure).read()
+            response = urlopen(request, timeout=API_TMOUT, context=self.secure).read()
             self.info = json.loads(response.decode())
-            # Ex: api_version=15.0, https_port=57701, api_domain=xxxx.fbxos.fr, api_base_url=/api/
+
             self.api_base_url = self.info.get('api_base_url', '/api/')
             self.https_port = int(self.info.get('https_port', 443))
             self.api_domain = self.info.get('api_domain', None)
 
             supported = int(float(self.info.get('api_version', self.api_ver)))
-            # On utilise la version demandée si supportée, sinon on descend au max supporté
             self.api_ver = min(self.requested_api_ver, supported)
 
             Domoticz.Debug(f"Supported API version: {self.info['api_version']}")
             Domoticz.Debug(f"Freebox model: {self.info['box_model']}")
+
         except (urllib.error.HTTPError, urllib.error.URLError) as error:
             Domoticz.Error(f"Init error ('/api_version'): {error}")
+            raise
         except timeout:
             Domoticz.Error('Timeout when call ("/api_version")')
+            raise
+
         if self.info is None:
-            Domoticz.Error(
-                'Fatal error: Unable to initialize Freebox connection!')
+            Domoticz.Error('Fatal error: Unable to initialize Freebox connection!')
         elif int(float(self.info['api_version'])) < self.requested_api_ver:
             Domoticz.Error(
                 f"You need to upgrade Freebox's firmware to use at least API version "
@@ -79,7 +80,8 @@ class FbxCnx:
             )
 
     def _request(self, path, method='GET', headers=None, data=None):
-        """ Send a request to Freebox API
+        """
+        Send a request to Freebox API
 
         Args:
             path (str): api_url
@@ -95,36 +97,22 @@ class FbxCnx:
         Domoticz.Debug('API REQUEST - Method: ' + method)
         Domoticz.Debug('API REQUEST - Headers: ' + f"{headers}")
         Domoticz.Debug('API REQUEST - Data: ' + f"{data}")
+
         if data is not None:
-            data = json.dumps(data)
-            data = data.encode()
+            data = json.dumps(data).encode()
+
         request = Request(url=url, data=data, method=method)
         if headers is not None:
             request.headers.update(headers)
-        api_response = urlopen(request, timeout=API_TMOUT,
-                               context=self.secure).read()
+
+        api_response = urlopen(request, timeout=API_TMOUT, context=self.secure).read()
         Domoticz.Debug(f"<- API Response: {api_response}")
         dict_response = json.loads(api_response.decode())
         return dict_response
 
     def register(self, app_id, app_name, version, device_name, wait=REGISTER_TMOUT):
         """
-        register method is used to obtain a "app_token" (ak. grant access to Freebox)
-
-        You must gain access to Freebox API before being able to use the api.
-
-        This is the first step, the app will ask for an app_token using the following call.
-        A message will be displayed on the Freebox LCD asking the user to grant/deny access
-        to the requesting app.
-        Once the app has obtained a valid app_token, it will not have to do this procedure again
-        unless the user revokes the app_token.
-
-        Args:
-            app_id (str): A unique application identifier string
-            app_name (str): A descriptive application name (will be displayed on lcd)
-            version (str): app version
-            device_name (str): The name of the device on which the app will be used
-            wait (int, optional): seconds before timeout. Defaults to REGISTER_TMOUT.
+        Register method is used to obtain a "app_token"
 
         Returns:
             str: "app_token" if success else empty string
@@ -139,34 +127,21 @@ class FbxCnx:
         status = 'pending'
         if not response['success'] and response['msg']:
             Domoticz.Error(f"Registration error: {response['msg']}")
-        else :
-            track_id, app_token = response['result']['track_id'], response['result']['app_token']
+        else:
+            track_id = response['result']['track_id']
+            app_token = response['result']['app_token']
             while status != 'granted' and wait != 0:
                 status = self._request(f"login/authorize/{track_id}")
                 status = status['result']['status']
                 wait = wait - 1
                 time.sleep(1)
-        if status == 'granted':
-            return app_token
+            if status == 'granted':
+                return app_token
         return ""
 
     def _mksession(self, app_id, app_token):
         """
-        Create a new session (to make an authenticated call to the API)
-
-        To protect the "app_token" secret, it will never be used directly to authenticate
-        the application, instead the API will provide a challenge the app will combine to
-        its "app_token" to open a session and get a "session_token"
-
-        The app will then have to include the session_token in the HTTP headers of the
-        following requests
-
-        Args:
-            app_id (str): A unique application identifier string
-            app_token (str): Secret application token
-
-        Returns:
-            str: "session_token"
+        Create a new authenticated session
         """
         challenge = self._request('login/')['result']['challenge']
         Domoticz.Debug('Challenge: ' + challenge)
@@ -174,22 +149,19 @@ class FbxCnx:
             "app_id": app_id,
             "password": hmac.new(app_token.encode(), challenge.encode(), hashlib.sha1).hexdigest()
         }
-        session_token = self._request(
-            'login/session/', 'POST', None, data)['result']['session_token']
+        session_token = self._request('login/session/', 'POST', None, data)['result']['session_token']
         Domoticz.Debug('Session Token: ' + session_token)
         return session_token
 
     def _disconnect(self, session_token):
         """
         Closing the current session
-
-        Returns:
-            (dict of str: str): Freebox API Response as dictionary
         """
         result = self._request(
             'login/logout/',
             'POST',
-            {'Content-Type': 'application/json', 'X-Fbx-App-Auth': session_token})
+            {'Content-Type': 'application/json', 'X-Fbx-App-Auth': session_token}
+        )
         Domoticz.Debug(f"Disconnect: {result}")
         return result
 
@@ -199,19 +171,11 @@ class FbxCnx:
         Exemple attendu:
           https://<api_domain>:<https_port><api_base_url>v<api_ver>/
         """
-        # 1) Parse le host initial (celui fourni au plugin)
         parsed = urlparse(self.host if '://' in self.host else ('https://' + self.host))
         scheme = parsed.scheme or 'https'
-
-        # 2) Détermine le hostname de base
-        # - si api_domain fourni : on l'utilise (cert + routage Freebox OS)
-        # - sinon : on garde le hostname du host initial
         hostname = self.api_domain if self.api_domain else (parsed.hostname or parsed.netloc or self.host)
-
-        # 3) Détermine le port
         port = self.https_port if self.https_port else (parsed.port or 443)
 
-        # 4) Normalise api_base_url
         api_base = self.api_base_url or '/api/'
         if not api_base.startswith('/'):
             api_base = '/' + api_base
@@ -219,76 +183,41 @@ class FbxCnx:
 
         return f"{scheme}://{hostname}:{port}{api_base}v{self.api_ver}/"
 
+
 class FbxApp(FbxCnx):
     """
     FbxApp describe methodes to call specified Freebox API
-
-    Args:
-        FbxCnx (FbxCnx): Freebox connection
     """
     tv_player = None
 
     def __init__(self, app_id, app_token, host=HOST, session_token=None, enable_players=True):
         super().__init__(host)
-        self.app_id, self.app_token = app_id, app_token
-        self.session_token = self._mksession(
-            app_id, app_token) if session_token is None else session_token
+        self.app_id = app_id
+        self.app_token = app_token
+        self.session_token = self._mksession(app_id, app_token) if session_token is None else session_token
         self.system = self.create_system()
-        self.players = None  # Server may be connected to a Freebox TV Player
+        self.players = None
         if enable_players:
             self.create_players()
 
     def __del__(self):
-        self._disconnect(self.session_token)
+        try:
+            session_token = getattr(self, 'session_token', None)
+            if session_token:
+                self._disconnect(session_token)
+        except Exception:
+            pass
 
     def post(self, path, data=None):
-        """
-        HTTP POST Request to API
-
-        Args:
-            path (str): api_url
-            data (dict of str: str, optional): _description_. Defaults to None.
-
-        Returns:
-            (dict of str: str): Freebox API Response as dictionary
-        """
         return self._request(path, 'POST', {"X-Fbx-App-Auth": self.session_token}, data)
 
     def put(self, path, data=None):
-        """
-        HTTP PUT Request to API
-
-        Args:
-            path (str): api_url
-            data (dict of str: str, optional): _description_. Defaults to None.
-
-        Returns:
-            (dict of str: str): Freebox API Response as dictionary
-        """
         return self._request(path, 'PUT', {"X-Fbx-App-Auth": self.session_token}, data)
 
     def get(self, path):
-        """
-        HTTP GET Request to API
-
-        Args:
-            path (str): api_url
-
-        Returns:
-            (dict of str: str): Freebox API Response as dictionary
-        """
         return self._request(path, 'GET', {"X-Fbx-App-Auth": self.session_token})
 
     def call(self, path):
-        """
-        Call Freebox API
-
-        Args:
-            path (str): api_url
-
-        Returns:
-            (dict of str: str): Freebox API Response as dictionary
-        """
         result = {}
         try:
             api_result = self.get(path)
@@ -301,42 +230,19 @@ class FbxApp(FbxCnx):
         return result
 
     def percent(self, value, total, around=2):
-        """
-        Formula of percentage : value / total * 100
-
-        Args:
-            value (int): numerator
-            total (int): denominator
-            around (int, optional): decimal precision. Defaults to 2.
-
-        Returns:
-            float: calculated percent
-        """
         percent = 0
-        if (total > 0) :
+        if total > 0:
             percent = value / total * 100
         return round(percent, around)
 
     def ls_devices(self):
-        """
-        List of devices connected to the Freebox server
-
-        Returns:
-            (dict of str: str): {device: values}
-        """
         return self.call('lan/browser/pub/')
 
     def ls_storage(self):
-        """
-        List storages attached to the Freebox server
-
-        Returns:
-            (dict of str: str): {disk_label: % of usage}
-        """
         result = {}
         ls_disk = self.call('storage/disk/')
         for disk in ls_disk:
-            if not 'partitions' in disk:  # /!\ If disk don't have any partition
+            if 'partitions' not in disk:
                 continue
             for partition in disk['partitions']:
                 label = partition['label']
@@ -344,19 +250,10 @@ class FbxApp(FbxCnx):
                 total = partition['total_bytes']
                 percent = self.percent(used, total)
                 Domoticz.Debug(f"Usage of disk '{label}': {used}/{total} bytes ({percent}%)")
-                result.update({str(label): str(self.percent(used, total))})
+                result.update({str(label): str(percent)})
         return result
 
     def get_name_from_macaddress(self, p_macaddress):
-        """
-        Find device name by his mac-address
-
-        Args:
-            p_macaddress (str): @mac type 01:02:03:04:05:06
-
-        Returns:
-            str: device name if @mac is know or None
-        """
         result = None
         ls_devices = self.ls_devices()
         for device in ls_devices:
@@ -366,15 +263,6 @@ class FbxApp(FbxCnx):
         return result
 
     def reachable_macaddress(self, p_macaddress):
-        """
-        Check if device is reachable by his mac-address
-
-        Args:
-            p_macaddress (str): @mac type 01:02:03:04:05:06
-
-        Returns:
-            bool: True if reachable else False
-        """
         result = False
         ls_devices = self.ls_devices()
         for device in ls_devices:
@@ -387,12 +275,6 @@ class FbxApp(FbxCnx):
         return result
 
     def online_devices(self):
-        """
-        Get online devices
-
-        Returns:
-            (dict of str: str): {macaddress: name}
-        """
         result = {}
         ls_devices = self.ls_devices()
         for device in ls_devices:
@@ -403,17 +285,12 @@ class FbxApp(FbxCnx):
                 result.update({macaddress: name})
         return result
 
-    def alarminfo(self):  # Only on Freebox Delta
-        """
-        _summary_
-
-        Returns:
-            _type_: _description_
-        """
+    def alarminfo(self):
         result = {}
         prerequisite_pattern = '^fbxgw7-r[0-9]+/full$'
         if self.info is None or re.match(prerequisite_pattern, self.info['box_model']) is None:
-            return result  # Return an empty list if model of Freebox isn't compatible with alarm
+            return result
+
         nodes = self.call('home/tileset/all')
         for node in nodes:
             device = {}
@@ -425,92 +302,79 @@ class FbxApp(FbxCnx):
                         label = data["label"]
                         if data['value'] == 'alarm1_armed':
                             value = 1
-                            device.update(
-                                {"alarm1_status": str(value)})
+                            device.update({"alarm1_status": str(value)})
                         elif data['value'] == 'alarm1_arming':
                             value = -1
-                            device.update(
-                                {"alarm1_status": str(value)})
+                            device.update({"alarm1_status": str(value)})
                         else:
                             value = 0
-                            device.update(
-                                {"alarm1_status": str(value)})
+                            device.update({"alarm1_status": str(value)})
+
                         if data['value'] == 'alarm2_armed':
                             value = 1
-                            device.update(
-                                {"alarm2_status": str(value)})
+                            device.update({"alarm2_status": str(value)})
                         elif data['value'] == 'alarm2_arming':
                             value = -1
-                            device.update(
-                                {"alarm2_status": str(value)})
+                            device.update({"alarm2_status": str(value)})
                         else:
                             value = 0
-                            device.update(
-                                {"alarm2_status": str(value)})
+                            device.update({"alarm2_status": str(value)})
                         device.update({"label": str(label)})
-                    elif (data["ep_id"] == 13) and node["type"] == "alarm_control":  # error
+                    elif (data["ep_id"] == 13) and node["type"] == "alarm_control":
                         status_error = data["value"]
-                        device.update(
-                            {"status_error": str(status_error)})
+                        device.update({"status_error": str(status_error)})
                     elif data["name"] == 'battery_warning':
                         battery = data["value"]
                         device.update({"battery": str(battery)})
+
                     device1 = device.copy()
                     device2 = device.copy()
                     if 'alarm1_status' in device1:
                         device1['value'] = device1['alarm1_status']
-                        device1['label'] = device1['label']+'1'
+                        device1['label'] = device1['label'] + '1'
                     if 'alarm2_status' in device2:
                         device2['value'] = device2['alarm2_status']
-                        device2['label'] = device2['label']+'2'
+                        device2['label'] = device2['label'] + '2'
                     result.update({device1['label']: device1})
                     result.update({device2['label']: device2})
 
-            nodes = self.call("home/nodes")
-            for node in nodes:
-                device = {}
-                label = ''
-                if ((node["category"] == "pir") or (node["category"] == "dws")):
-                    label = node["label"]
-                    device.update({"label": str(label)})
-                    device.update({"type": str(node["category"])})
-                    for endpoint in node["show_endpoints"]:
-                        if endpoint["name"] == 'battery':
-                            battery = endpoint["value"]
-                            device.update({"battery": str(battery)})
-                        elif endpoint["name"] == 'trigger':
-                            if endpoint["value"]:
-                                device.update({"value": 0})
-                            elif not endpoint["value"]:
-                                device.update({"value": 1})
-                        result.update({label: device})
+        nodes = self.call("home/nodes")
+        for node in nodes:
+            device = {}
+            label = ''
+            if (node["category"] == "pir") or (node["category"] == "dws"):
+                label = node["label"]
+                device.update({"label": str(label)})
+                device.update({"type": str(node["category"])})
+                for endpoint in node["show_endpoints"]:
+                    if endpoint["name"] == 'battery':
+                        battery = endpoint["value"]
+                        device.update({"battery": str(battery)})
+                    elif endpoint["name"] == 'trigger':
+                        if endpoint["value"]:
+                            device.update({"value": 0})
+                        elif not endpoint["value"]:
+                            device.update({"value": 1})
+                result.update({label: device})
         return result
 
     def connection_rate(self):
-        """
-        Get upload and download speed rate (of WAN Interface)
-
-        Returns:
-            (dict of str: str): {rate_down: rate, rate_up: rate} (ko/s)
-        """
         result = {}
         connection = self.call('connection/')
-        if connection['rate_down']:
-            result.update({str('rate_down'): str(connection['rate_down']/1024)})
-        if connection['rate_up']:
-            result.update({str('rate_up'): str(connection['rate_up']/1024)})
+        if not connection:
+            return result
+        if 'rate_down' in connection and connection['rate_down'] is not None:
+            result.update({str('rate_down'): str(connection['rate_down'] / 1024)})
+        if 'rate_up' in connection and connection['rate_up'] is not None:
+            result.update({str('rate_up'): str(connection['rate_up'] / 1024)})
         return result
 
     def wan_state(self):
-        """
-        Is WAN link UP or DOWN
-
-        Returns:
-            bool: True if "UP" else False
-        """
         state = None
         connection = self.call('connection/')
-        if connection['state'] == 'up':
+        if not connection:
+            return False
+        if connection.get('state') == 'up':
             Domoticz.Debug('Connection is UP')
             state = True
         else:
@@ -520,31 +384,16 @@ class FbxApp(FbxCnx):
 
     def wifi_state(self):
         wifi = self.call('wifi/config/')
-        enabled = wifi.get('enabled')
+        enabled = wifi.get('enabled') if isinstance(wifi, dict) else None
         if enabled is None:
             Domoticz.Error("Wifi state unavailable (missing 'enabled')")
-            return None  # ou False si tu préfères
+            return None
         Domoticz.Debug('Wifi interface is UP' if enabled else 'Wifi interface is DOWN')
         return bool(enabled)
 
     def wifi_enable(self, switch_on):
-        """
-        Switch wifi ON or OFF
-
-        Args:
-            switch_on (bool): True to switch ON or False du switch OFF
-
-        Raises:
-            timeout: Catch error if you are disconnected due to wifi switch OFF
-
-        Returns:
-            bool: wifi state
-        """
         status = None
-        if switch_on:
-            data = {'enabled': True}
-        else:
-            data = {'enabled': False}
+        data = {'enabled': bool(switch_on)}
         try:
             response = self.put("wifi/config/", data)
             status = False
@@ -558,19 +407,13 @@ class FbxApp(FbxCnx):
             Domoticz.Error(f"API Error ('wifi/config/'): {error}")
         except timeout as exc:
             if not switch_on:
-                # If we are connected using wifi, disabling wifi will close connection
-                # thus PUT response will never be received: a timeout is expected
                 Domoticz.Error('Wifi disabled')
                 status = False
             else:
-                # Forward timeout exception as should not occur
                 raise timeout from exc
         return status
 
     def reboot(self):
-        """
-        Reboot the Freebox server
-        """
         Domoticz.Debug('Try to reboot with session : ' + self.session_token)
         response = self.post("system/reboot")
         if response['success']:
@@ -579,18 +422,9 @@ class FbxApp(FbxCnx):
             Domoticz.Error('Error: You must grant reboot permission')
 
     def next_pvr_precord_timestamp(self, relative=True):
-        """
-        Next schedule / programmed PVR record
-        
-        Args:
-            relative (bool, optional): if True time result is relative else absolute. Defaults to True.
-        
-        Returns:
-            int: start_timestamp
-        """
         precord = False
         now = int(time.time())
-        next_recording = now -1 # -1 if none programmed PVR record
+        next_recording = now - 1
         result = self.call('/pvr/programmed')
         Domoticz.Debug(f"PVR Programmed List: {result}")
         for pvr in result:
@@ -600,37 +434,22 @@ class FbxApp(FbxCnx):
                     next_recording = recording_start
                     precord = True
                 next_recording = recording_start if recording_start < next_recording else next_recording
-            elif pvr['state'] == 'starting' or pvr['state'] == 'running' or pvr['state'] == 'running_error':
+            elif pvr['state'] in ('starting', 'running', 'running_error'):
                 next_recording = now
                 break
         return (next_recording - now) if relative else next_recording
 
     def create_system(self):
-        """
-        Create system information
-
-        Returns:
-            System: Freebox System Object 
-        """
         self.system = FbxApp.System(self)
         return self.system
 
     def create_players(self):
-        """
-        Create sub-objet TV Players
-
-        Returns:
-            Players: Freebox TV Players Object
-        """
         self.players = FbxApp.Players(self)
         return self.players
 
     class System:
-        """
-        Class and method about System (°temp_sensor,...)
-        """
         def __init__(self, fbxapp):
-            self.server = fbxapp  # to access Outer's class instance "FbxApp" from System Objet
+            self.server = fbxapp
             self.info = self.getinfo()
 
         def getinfo(self):
@@ -640,18 +459,13 @@ class FbxApp(FbxCnx):
 
         def sensors(self):
             result = {}
-            if self.info and self.info["sensors"]:
+            if self.info and "sensors" in self.info and self.info["sensors"]:
                 result = self.info["sensors"]
             return result
 
-
     class Players:
-        """
-        Class and method for Freebox TV Player
-        """
-
         def __init__(self, fbxapp):
-            self.server = fbxapp  # to access Outer's class instance "FbxApp" from Players
+            self.server = fbxapp
             self.info = self.getinfo()
 
         def getinfo(self):
@@ -676,15 +490,14 @@ class FbxApp(FbxCnx):
         def state(self, uid):
             status = None
             try:
-                response = self.server.get(
-                    f"/player/{uid}/api/v{TV_API_VER}/status")
-            except (urllib.error.HTTPError, urllib.error.URLError) as error:
-                # If player is shutdown : Error="Gateway Time-out"
-                if error.code == 504:  # error != 'Gateway Time-out'
+                response = self.server.get(f"/player/{uid}/api/v{TV_API_VER}/status")
+            except urllib.error.HTTPError as error:
+                if error.code == 504:
                     status = False
                 else:
-                    Domoticz.Error(
-                        f"API Error ('/player/{uid}/api/v{TV_API_VER}/status'):  {error}")
+                    Domoticz.Error(f"API Error ('/player/{uid}/api/v{TV_API_VER}/status'): {error}")
+            except urllib.error.URLError as error:
+                Domoticz.Error(f"API Error ('/player/{uid}/api/v{TV_API_VER}/status'): {error}")
             except timeout:
                 Domoticz.Error('Timeout')
             else:
@@ -695,18 +508,19 @@ class FbxApp(FbxCnx):
 
         def remote(self, uid, remote_code, key, long=False):
             url = f"http://hd{uid}.freebox.fr/pub/remote_control?code={remote_code}&key={key}"
-            url = url + '&long=true' if long else url
+            if long:
+                url = url + '&long=true'
+            response = None
             try:
                 request = Request(url)
                 response = urlopen(request, timeout=API_TMOUT).read()
             except (urllib.error.HTTPError, urllib.error.URLError) as error:
                 Domoticz.Error(f"TV Remote error ('{url}'): {error}")
             except timeout:
-                Domoticz.Error('Timeout')  # None if Error occurred
+                Domoticz.Error('Timeout')
             return response
 
         def shutdown(self, uid, remote_code):
-            ## To Do http://hd{uid}.freebox.fr/pub/remote_control?code={remote_code}&key=power
             return self.remote(uid, remote_code, "power")
 
 
